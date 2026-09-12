@@ -41,6 +41,8 @@
 | `AddNode` | `Sub(sld, id, kind, x, y, w, h, fillC, lineC, lineW, dash, [text], [fontPt], [bold], [italic], [fontC], [cornerRatio], [fontName], [adj2])` | 建一个节点并填字、打标签 |
 | `AddPath` | `Sub(sld, id, pts$, lineC, lineW, dash, arrowEnd)` | 按点串 `"x1,y1;x2,y2;..."` 画折线连线（末段带箭头） |
 | `DrawPolyline` | 底层，被 AddPath 调用 | 逐段 AddLine |
+| `SetPara` | `Sub(sld, id, align$, marginPx!)` | 事后排版：`align` = `"left"/"center"/"right"`，`marginPx` 为文字左内边距（px）。**必须在全部 AddNode 之后调用**（可跨模块引用别处定义的节点） |
+| `SetPartColor` | `Sub(sld, id, nChars&, colorC&)` | 把节点文字前 `nChars` 个字符单独标色 + 加粗（如 `"Step 1:"` 标红）。同样必须在 AddNode 之后调用 |
 | `SetLabel` / `StyleShape` / `TagShape` / `HasTag` / `ClearPrevious` | 工具 | 文字/样式/标签/幂等 |
 | `BuildFlowchart` / `RemoveFlowchart` | 入口 | 运行/清空 |
 
@@ -74,8 +76,13 @@
    中文节点用英文名 / 缩写 / 拼音；注释也写英文（中文注释会把文件变成 UTF-8）。
    需要两行文字写 `"A" & vbLf & "B"`，比自动折行更可控。
 6. 坐标、颜色、形状、文字**全部来自对源图的识别**，禁止凭空猜测。
-7. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/非 ASCII/点串格式）。
-8. 交付前用 `scripts/build_ppt.py <输出目录>` 生成 `.pptx`；交付以 `.pptx` 为主、
+7. **装饰调用统一放在 `Decorate` 私有 Sub 里**（`DrawAll` 末尾调用）：所有
+   `SetPara` / `SetPartColor` 必须写在全部 AddNode 之后执行的位置——回放器
+   与 lint 都是两遍解析（先收集节点，再应用装饰），写错顺序会匹配不到节点。
+   覆盖式标题（文字叠在列表框上方）的避让写法：列表正文前导空行
+   `"" & vbLf & "-Item..."`，标题用无边框无填充 rect 叠加，两条渲染路径都成立。
+8. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/非 ASCII/点串格式）。
+9. 交付前用 `scripts/build_ppt.py <输出目录>` 生成 `.pptx`；交付以 `.pptx` 为主、
    `.bas` 为辅（`.bas` 是"可重建的源码"，`.pptx` 是用户实际要用的文件）。
 
 ## 修改生成的 VBA
