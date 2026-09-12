@@ -199,6 +199,52 @@ Public Sub SetLabel(ByVal shp As Shape, ByVal txt As String, _
     On Error GoTo 0
 End Sub
 
+' ---- rich-text helpers (content modules may call these; the replay and
+'      build_ppt.py parse the SAME calls so both paths render alike) -----------
+
+' Find a tagged shape by id (first match)
+Public Function ShapeById(ByVal sld As Slide, ByVal id As String) As Shape
+    Dim shp As Shape
+    For Each shp In sld.Shapes
+        If shp.Tags(TAG_NAME) = id Then
+            Set ShapeById = shp
+            Exit Function
+        End If
+    Next shp
+End Function
+
+' Paragraph alignment for a tagged shape: align = "left" | "center" | "right";
+' marginPx is the extra left margin expressed in canvas px.
+Public Sub SetPara(ByVal sld As Slide, ByVal id As String, ByVal align As String, _
+                   ByVal marginPx As Single)
+    Dim shp As Shape
+    Set shp = ShapeById(sld, id)
+    If shp Is Nothing Then Exit Sub
+    On Error Resume Next
+    Select Case LCase$(align)
+        Case "left": shp.TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignLeft
+        Case "right": shp.TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignRight
+        Case Else: shp.TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignCenter
+    End Select
+    shp.TextFrame2.MarginLeft = PX2L(marginPx) * 72
+    On Error GoTo 0
+End Sub
+
+' Color + bold the FIRST nChars characters of a tagged shape's label
+' (e.g. the red "Step 1:" prefix inside a banner).
+Public Sub SetPartColor(ByVal sld As Slide, ByVal id As String, ByVal nChars As Long, _
+                        ByVal colorC As Long)
+    Dim shp As Shape
+    Set shp = ShapeById(sld, id)
+    If shp Is Nothing Then Exit Sub
+    On Error Resume Next
+    With shp.TextFrame2.TextRange.Characters(1, nChars).Font
+        .Fill.ForeColor.RGB = colorC
+        .Bold = msoTrue
+    End With
+    On Error GoTo 0
+End Sub
+
 ' ---- tags / idempotency ----------------------------------------------------
 Public Sub ClearPrevious(ByVal sld As Slide, ByVal tagName As String)
     Dim i As Long
