@@ -98,6 +98,7 @@ def load_bas(out_dir: str):
     pal: dict[str, tuple[int, int, int]] = {}
     scal: dict[str, str] = {}
     nodes, paths = [], []
+    decor: list[str] = []
     const_names: set[str] = {
         "LINE_SOLID", "LINE_DASH", "LINE_DOT", "LINE_DASHDOT",
         "True", "False", "Nothing",
@@ -118,6 +119,24 @@ def load_bas(out_dir: str):
                 nodes.append(parse_node(split_args(line[8:])[1:]))
             elif line.startswith("AddPath "):
                 paths.append(parse_path(split_args(line[8:])))
+            elif line.startswith("SetPara ") or line.startswith("SetPartColor "):
+                decor.append(line)  # second pass, after ALL nodes exist
+    for line in decor:
+        if line.startswith("SetPara "):
+            args = split_args(line[8:])
+            nid, align = args[1].strip('"'), args[2].strip('"').lower()
+            ml = num(args[3], 0.0) if len(args) > 3 else 0.0
+            for n in nodes:
+                if n["id"] == nid:
+                    n["align"], n["ml"] = align, ml
+        else:  # SetPartColor
+            args = split_args(line[8:])
+            nid = args[1].strip('"')
+            nc = int(num(args[2], 0.0)) if len(args) > 2 else 0
+            ctoken = args[3] if len(args) > 3 else "RGB(200, 30, 40)"
+            for n in nodes:
+                if n["id"] == nid:
+                    n["prefix"] = (nc, ctoken)
     return pal, scal, nodes, paths
 
 
@@ -380,14 +399,39 @@ def build_with_replay(out_dir: str, out_path: str) -> int:
         if n["text"]:
             tf.text = n["text"]
             tc = resolve_color(n["fc"], pal) or (31, 31, 31)
+            align = n.get("align") or "center"
+            ml_px = n.get("ml", 0) or 0
             for i, para in enumerate(tf.paragraphs):
-                para.alignment = PP_ALIGN.CENTER
+                para.alignment = (PP_ALIGN.LEFT if align == "left"
+                                  else PP_ALIGN.RIGHT if align == "right"
+                                  else PP_ALIGN.CENTER)
                 for r in para.runs:
                     r.font.size = Pt(n["pt"])
                     r.font.bold = n["bold"]
                     r.font.italic = n["ital"]
                     r.font.name = g["font"]
                     r.font.color.rgb = RGBColor(*tc)
+            if ml_px and align == "left":
+                tf.margin_left = Pt(ml_px * g["s"] * 72)
+            prefix = n.get("prefix")
+            if prefix and prefix[0] > 0:
+                # split the first paragraph: red bold prefix + rest
+                nc, ctoken = prefix
+                pc = resolve_color(ctoken, pal) or (200, 30, 40)
+                p0 = tf.paragraphs[0]
+                full = p0.runs[0].text if p0.runs else ""
+                if full:
+                    p0.clear()
+                    r1 = p0.add_run()
+                    r1.text = full[:nc]
+                    r2 = p0.add_run()
+                    r2.text = full[nc:]
+                    for r, bold, c in ((r1, True, pc), (r2, n["bold"], tc)):
+                        r.font.size = Pt(n["pt"])
+                        r.font.bold = bold
+                        r.font.italic = n["ital"]
+                        r.font.name = g["font"]
+                        r.font.color.rgb = RGBColor(*c)
 
     for p in paths:
         pts = p["pts"]
