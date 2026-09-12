@@ -6,6 +6,8 @@
 
 - `--band` 可重复。两图按同一坐标带分别量暗像素包围盒，宽高对比即可
   反推渲染字号相对源图是偏大还是偏小（宽度比 ≈ 字号比）。
+- `--cjk` 中文模式：单行中文文字带的高度 ≈ 字号像素，用 **高度比** 反推字号
+  （比宽度比可靠，因为中文宽度还受字数影响）。宽度比仍照常打印供参考。
 - 不传 `--band` 时自动模式：按图高切成若干水平带逐带对比（快速全图扫）。
 - 前提：两张图同宽高比（渲染图由 render_preview.py 按同画布比例产出）。
 
@@ -45,6 +47,8 @@ def main():
                     help="名称:x1,y1,x2,y2（可重复）")
     ap.add_argument("--band-h", type=int, default=80,
                     help="自动模式的带高（px，默认 80）")
+    ap.add_argument("--cjk", action="store_true",
+                    help="中文模式：用文字带高度比（而非宽度比）反推字号")
     args = ap.parse_args()
     for p in (args.src, args.ren):
         if not os.path.isfile(p):
@@ -61,18 +65,26 @@ def main():
                   min(y + args.band_h, h))
                  for y in range(0, h - 10, args.band_h)]
 
-    print("%-16s %-24s %-24s" % ("band", "source w,h", "render w,h"))
+    print("%-16s %-24s %-24s %s" % ("band", "source w,h", "render w,h",
+                                     "h-ratio" if args.cjk else "w-ratio"))
     big, small = [], []
     for name, x1, y1, x2, y2 in bands:
         a = bbox(src, (x1, y1, x2, y2))
         b = bbox(ren, (x1, y1, x2, y2))
-        print("%-16s %-24s %-24s" % (name, a, b))
+        print("%-16s %-24s %-24s" % (name, a, b), end="")
         if a and b and a[0] > 4 and b[0] > 4:
-            r = b[0] / a[0]
+            if args.cjk:
+                # single-line CJK: band HEIGHT ~ font size, independent of chars
+                r = b[1] / a[1]
+            else:
+                r = b[0] / a[0]
+            print("  %.2fx" % r)
             if r > 1.15:
                 big.append((name, r))
             elif r < 0.85:
                 small.append((name, r))
+        else:
+            print()
     if big:
         print("\n渲染偏大 (>1.15x): %s"
               % ", ".join("%s %.2fx" % (n, r) for n, r in big))
@@ -80,7 +92,10 @@ def main():
         print("渲染偏小 (<0.85x): %s"
               % ", ".join("%s %.2fx" % (n, r) for n, r in small))
     if not big and not small:
-        print("\n各带宽度比均在 0.85~1.15x 内，字号与源图基本一致。")
+        if args.cjk:
+            print("\n各带高度比均在 0.85~1.15x 内，中文字号与源图基本一致。")
+        else:
+            print("\n各带宽度比均在 0.85~1.15x 内，字号与源图基本一致。")
     return 0
 
 
