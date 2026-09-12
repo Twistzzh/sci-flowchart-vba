@@ -44,7 +44,9 @@ build_vba.py` 三脚本管线生成 VBA。**这一步"先转 SVG"损失太大**�
 4. **自检**（见末尾清单）。
 5. **生成 PPT**：用 `scripts/build_ppt.py <输出目录>` 把 `.bas` **自动灌进一个
    真正的 `.pptx` 并直接执行出图**（详见下节「最后一步：自动产出 PPT」）。
-6. **交付**：`.pptx` 优先，附上全部 `.bas` + 简明导入说明。
+6. **两轮评审**（详见「两轮评审」章节）：评审一过风格一致性 → 评审二过
+   渲染几何检查；任一轮不过就修 `.bas` 重跑，**通过后才准交付**。
+7. **交付**：`.pptx` 优先，附上全部 `.bas` + 简明导入说明。
 
 ---
 
@@ -129,7 +131,10 @@ End Sub
 - **坐标 / 颜色 / 形状 / 文字全部来自识图**，禁止凭空猜测；
   拿不准的颜色就近取图上的实际色，拿不准的位置用整齐的网格对齐。
 - **字号** `fontPt` 用 9~18 之间的合理值（小框用小字），统一用 `SetLabel` 的
-  自动缩放兜底，不会溢出。
+  自动缩放兜底，不会溢出。**层级比例要和原图一致**（主标题 > 横幅 > 节点
+  标签 > 明细），宁可测（`compare_text.py`），不要一律 12pt。
+- **线宽 / 配色从原图测得**：节点细描边 1pt 级；强调色保持原图饱和度、
+  浅色衬底保持原图深浅——评审一会逐项对照，褪色/过淡/虚线消失都打回。
 - **拆模块**：节点 > 18 或单模块 > 300 行时，把 `DrawContentN` 拆到
   `modFlow_Content2.bas` 等，`DrawAll` 要依次调用全部（跨模块 Public Sub 全局可见）。
 - 连线端点要贴到形状边界（不要让箭头悬空）；正交/阶梯连线写成多点 `AddPath`。
@@ -189,6 +194,59 @@ python scripts/build_ppt.py <输出目录> [--out 交付.pptx] [--no-run] [--rep
 
 ---
 
+## 两轮评审（交付前必过）
+
+`build_ppt.py` 出了 `.pptx` 不等于完工。**必须顺序过两轮评审**，标准全文见
+`references/review_rubric.md`；`references/review_examples/` 里有一对
+正/负样本（`origin.jpg` 风格基准原图、`failed.png` 失败案例渲染图），
+评审前先对照看一遍，把失败案例踩过的坑（红色标题褪色、面板衬底过淡、
+虚线框消失、文字穿底、块箭头错位、连线断开）记在脑子里。
+
+### 评审一：学术风格与源图一致性（.bas 调色板/字号/线宽 + 预览图）
+
+**对象**：`modFlow_Content*.bas` 的调色板与字号常量 +
+`scripts/render_preview.py` 产出的 `preview_compare.png`。
+**程序化互验**：`scripts/extract_colors.py`（取色）、`scripts/compare_text.py`
+（按文字带暗像素宽度反推字号）、`scripts/extract_geometry.py`（取框）。
+
+- **配色**：每个颜色常量必须来自程序化取色，禁止目测。重点盯三类漂移：
+  ① 强调色饱和度（原图鲜红标题不许褪成暗粉）；② 浅色衬底深浅（面板底色
+  不许淡到近乎白色）；③ 虚线容器框颜色深度（不许淡到不可见）。
+- **字体**：家族与原图一致（衬线 → Times New Roman，无衬线 → Arial）；
+  字号层级保持原图比例（主标题 > 横幅 > 节点标签 > 明细），用
+  `compare_text.py` 反推，禁止一律 12pt；加粗位置与原图一致。
+- **线框**：节点细描边 1pt 级；虚线样式/深浅同原图；块箭头颜色、方向、
+  长宽比同原图。
+- **风格**：扁平无阴影无渐变、对齐网格、留白均匀——学术图的基本面。
+
+不通过 → 修常量 → 重跑 `render_preview.py` → 再对照，过了才进评审二。
+
+### 评审二：最终 PPT 渲染检查（字体是否过大？线框/箭头位置是否正确？）
+
+**对象**：`build_ppt.py` 产出的 `flowchart.pptx`（有 PowerPoint 就导出幻灯片
+PNG 看；没有就看回放的 `preview_compare.png`，二者语义等价），
+外加程序化检查：
+
+```bash
+python scripts/review_render.py <输出目录>   # 对 flowchart.pptx 自动体检
+```
+
+脚本按真实字体（PIL 量宽）检查六项：**文本溢出节点（字体过大）、依赖
+自动折行、悬空连线端点、连线穿模、带文字节点意外重叠、形状出界**，
+并报告全图"文字宽/框宽"中位数提示字体整体偏小。退出码 0 = PASS。
+
+- [ ] 任何文字都不得溢出所属节点框（含自动折行后仍溢出的情形）。
+- [ ] 文字与节点的比例对照原图观感一致：大而满不行，小而空也不行
+      （failed.png 列表框就是"字小框空"的反例）。
+- [ ] 需要两行的文字显式写 `"A" & vbLf & "B"`，不许依赖自动折行。
+- [ ] 连线端点全部贴在节点边界上，无悬空；折线不穿无关节点内部。
+- [ ] 块箭头在两面板衔接处、方向长度正确，不错位变形。
+
+不通过 → 修 `.bas` → 重跑 `build_ppt.py` → 再跑 `review_render.py`。
+最多迭代 3 轮；仍不过就停下向用户说明剩余问题，**不要带病交付**。
+
+---
+
 ## 完整可运行示例
 
 见 `references/example_content.bas`（一个"开始→收集数据→判定→训练模型→结束"
@@ -222,6 +280,10 @@ python scripts/build_ppt.py <输出目录> [--out 交付.pptx] [--no-run] [--rep
 - [ ] 节点 > 18 或单模块 > 300 行时已拆到 `modFlow_Content2.bas`。
 - [ ] **已跑 `scripts/build_ppt.py`，输出目录里有可打开的 `.pptx`，且幻灯片上确实有形状**
       （不是空板）。
+- [ ] **评审一已过**：调色板/字号/线宽与原图程序化对照一致，无褪色、
+      无衬底过淡、无虚线消失（标准见 `references/review_rubric.md`）。
+- [ ] **评审二已过**：`scripts/review_render.py` 退出码 0，且多模态目测
+      `preview_compare.png` 无文字溢出、无悬空/错位连线、块箭头位置正确。
 
 > 项目里的 `scripts/lint_vba.py` 可以自动跑上面大部分检查：传一个输出目录即可。
 
@@ -237,11 +299,19 @@ python scripts/build_ppt.py <输出目录> [--out 交付.pptx] [--no-run] [--rep
 | 单个模块卡顿 | 节点/连线过密没拆 | 把 `DrawContentN` 拆到 `modFlow_Content2.bas` |
 | 颜色偏了 | 取色取成渐变中间值 | 图里用扁平色；渐变请取主色 |
 | 生成的 `.pptx` 是空白的 | COM 未装上 PowerPoint，或 `BuildFlowchart` 抛错被吞 | 看脚本日志；改走回放路径，并回查 `.bas` 是否漏几何常量 |
+| `review_render.py` FAIL | 字体过大溢出 / 悬空连线 / 穿模 / 出界 | 按输出清单逐条修 `.bas`，重跑 `build_ppt.py` 后再审 |
+| 渲染图风格与原图"不像" | 配色/字号/线宽凭目测没程序化取值 | 回评审一：`extract_colors.py` + `compare_text.py` 重新测量 |
 
 ## 资源
 
 - `assets/modFlow_Engine.bas` — 固定引擎（坐标映射 / AddNode / AddPath / 文字 / 幂等 / 入口）
 - `references/example_content.bas` — 可运行的内容模块示例
 - `references/vba-module-map.md` — 引擎 API 全表 + 内容模块契约
+- `references/review_rubric.md` — **两轮评审标准**（风格一致性 + 渲染几何检查）
+- `references/review_examples/origin.jpg` — 风格基准原图（正样本）
+- `references/review_examples/failed.png` — 失败案例渲染图（负样本，附八类典型失败）
 - `scripts/build_ppt.py` — **最后一步**：`.bas` → 真实 `.pptx`（COM 优先，回放兜底）
 - `scripts/lint_vba.py` — 交付前的结构自检
+- `scripts/review_render.py` — **评审二程序化检查**：文本溢出 / 悬空连线 / 穿模 / 重叠 / 出界
+- `scripts/render_preview.py` — 回放 `.bas` 渲染 `preview_compare.png`（与源图并排）
+- `scripts/extract_colors.py` / `extract_geometry.py` / `compare_text.py` — 评审一程序化取色 / 取框 / 反推字号
