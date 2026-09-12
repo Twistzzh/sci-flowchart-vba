@@ -85,6 +85,9 @@ Public Const OFFSET_Y_IN As Single = 0.35
 Public Const SLIDE_W_IN As Single = 13.333    ' 16:9；若图更高见下方"选版面"
 Public Const SLIDE_H_IN As Single = 7.5
 Public Const CUSTOM_SIZE As Boolean = False   ' 非 16:9 时改 True 并填上面 SLIDE_*
+' 字体：与源图字形一致。西文衬线 Times New Roman / 西文无衬线 Arial；
+' 中文黑体/无衬线 Microsoft YaHei、中文宋体/衬线 SimSun、粗黑 SimHei。
+' 预览与评审脚本会按 FONT_NAME 自动匹配对应 CJK 字体文件（YaHei/SimSun/SimHei）。
 Public Const FONT_NAME As String = "Arial"
 
 ' 2) 调色板（从图取色，一律 RGB 字面量）
@@ -106,6 +109,9 @@ Public Sub DrawContent1(ByVal sld As Slide)
                 "Start", 14, True, False, INK
     AddNode sld, "a", "round_rect", 520, 130, 160, 60, BG, LINE, 1, LINE_SOLID, _
                 "Collect data", 12, False, False, INK, 0.12
+    ' 中文流程图：节点文字直接写中文即可（.bas 用 UTF-8 编码）
+    AddNode sld, "cn", "round_rect", 700, 130, 160, 60, BG, LINE, 1, LINE_SOLID, _
+                "数据收集", 12, False, False, INK, 0.12
     AddPath sld, "e1", "600,70;600,130", LINE, 1, LINE_SOLID, True
 End Sub
 ```
@@ -123,9 +129,14 @@ End Sub
 
 ### 硬约束
 
-- **文字只用 ASCII**：`.bas` 是单字节 Latin-1 文件，中文进去必乱码。
-  中文节点用英文名 / 缩写 / 拼音（如"数据收集"→`Collect data` 或 `DataCollect`）。
-  注释也尽量写英文：中文注释会让文件变成 UTF-8，导入 VBE 后是乱码。
+- **文字保留源语言（中文图就写中文）**：节点文字、注释都可以直接用中文，
+  源图是中文流程图时**直接保留原中文**，不要翻译成英文 / 缩写 / 拼音。
+  `.bas` 统一用 **UTF-8 编码 + CRLF 换行**（不要存成 Latin-1 / ANSI）。
+  - 回放路径（`build_ppt.py` 无 Office 时）与 COM 路径都按 UTF-8 读取，
+    最终 `.pptx` 里的中文与源图一致。
+  - 若要在中文 Windows 上手动用 VBE「Import File」导入，导入前把 `.bas`
+    另存为 ANSI（GBK，记事本"另存为 → 编码：ANSI"）即可；用 `build_ppt.py`
+    直接出图则无需此步。
 - **强制换行**：需要"两行文字"时写 `"Revenue" & vbLf & "Optimization"`，
   比让引擎自动折行更接近原图的排版。
 - **坐标 / 颜色 / 形状 / 文字全部来自识图**，禁止凭空猜测；
@@ -133,6 +144,8 @@ End Sub
 - **字号** `fontPt` 用 9~18 之间的合理值（小框用小字），统一用 `SetLabel` 的
   自动缩放兜底，不会溢出。**层级比例要和原图一致**（主标题 > 横幅 > 节点
   标签 > 明细），宁可测（`compare_text.py`），不要一律 12pt。
+  中文源图校准字号时加 `--cjk`：单行中文文字带**高度 ≈ 字号**，
+  用高度比反推比宽度比可靠（宽度还受字数影响）。
 - **线宽 / 配色从原图测得**：节点细描边 1pt 级；强调色保持原图饱和度、
   浅色衬底保持原图深浅——评审一会逐项对照，褪色/过淡/虚线消失都打回。
 - **拆模块**：节点 > 18 或单模块 > 300 行时，把 `DrawContentN` 拆到
@@ -212,9 +225,13 @@ python scripts/build_ppt.py <输出目录> [--out 交付.pptx] [--no-run] [--rep
 - **配色**：每个颜色常量必须来自程序化取色，禁止目测。重点盯三类漂移：
   ① 强调色饱和度（原图鲜红标题不许褪成暗粉）；② 浅色衬底深浅（面板底色
   不许淡到近乎白色）；③ 虚线容器框颜色深度（不许淡到不可见）。
-- **字体**：家族与原图一致（衬线 → Times New Roman，无衬线 → Arial）；
+- **字体**：家族与原图一致。西文：衬线 → `Times New Roman`，无衬线 → `Arial`；
+  中文：黑体/无衬线 → `Microsoft YaHei`，宋体/衬线 → `SimSun`，粗黑 → `SimHei`
+  （写在 `FONT_NAME`，预览/评审脚本自动映射到对应 CJK 字体文件；单个节点
+  也可用 `AddNode` 的 `fontName` 可选参数覆盖）。
   字号层级保持原图比例（主标题 > 横幅 > 节点标签 > 明细），用
-  `compare_text.py` 反推，禁止一律 12pt；加粗位置与原图一致。
+  `compare_text.py` 反推（中文加 `--cjk` 按高度比），禁止一律 12pt；
+  加粗位置与原图一致。
 - **线框**：节点细描边 1pt 级；虚线样式/深浅同原图；块箭头颜色、方向、
   长宽比同原图。
 - **风格**：扁平无阴影无渐变、对齐网格、留白均匀——学术图的基本面。
@@ -273,8 +290,8 @@ python scripts/review_render.py <输出目录>   # 对 flowchart.pptx 自动体�
 - [ ] `modFlow_Engine.bas` 已原样附带，未被改写。
 - [ ] 内容模块声明了全部 9 个几何常量（`CANVAS_W_PX … FONT_NAME`）。
 - [ ] 定义了唯一 `Public Sub DrawAll(sld As Slide)`，且调用了所有 `DrawContentN`。
-- [ ] 颜色全是 `RGB(r,g,b)`；无 `vbRed` 之类；中文未进入字符串字面量。
-- [ ] 4 个 `.bas` 全部是 **纯 ASCII + CRLF**（含引擎文件；中文注释会让文件变 UTF-8，导入后乱码）。
+- [ ] 颜色全是 `RGB(r,g,b)`；无 `vbRed` 之类；节点文字可用中文（源图是中文时直接写中文）。
+- [ ] 全部 `.bas` 都是 **UTF-8 编码 + CRLF 换行**（含引擎文件；中文文字/注释允许，但行尾必须是 CRLF）。
 - [ ] 无空实参（形如 `AddNode …, 0.62, , 0.5` 会编译失败，中间槽位要写 `""`）。
 - [ ] 连线端点贴到形状边界，无悬空箭头。
 - [ ] 节点 > 18 或单模块 > 300 行时已拆到 `modFlow_Content2.bas`。
@@ -300,6 +317,8 @@ python scripts/review_render.py <输出目录>   # 对 flowchart.pptx 自动体�
 | 颜色偏了 | 取色取成渐变中间值 | 图里用扁平色；渐变请取主色 |
 | 生成的 `.pptx` 是空白的 | COM 未装上 PowerPoint，或 `BuildFlowchart` 抛错被吞 | 看脚本日志；改走回放路径，并回查 `.bas` 是否漏几何常量 |
 | `review_render.py` FAIL | 字体过大溢出 / 悬空连线 / 穿模 / 出界 | 按输出清单逐条修 `.bas`，重跑 `build_ppt.py` 后再审 |
+| 重建 `.pptx` 报 `PermissionError` | 上一轮 pptx 被预览面板/Office 占用，删除也失败 | `build_ppt.py <目录> --out <目录>\flowchart_v2.pptx` 换名输出；`review_render.py` 会自动选 mtime 最新的 pptx（`~$` 锁文件已过滤） |
+| 字母堆叠竖排标签报"文本总高超出节点" | 多行按 1.25 行距累计，细高框装不下 | 字号 8pt→6.5pt（等效视觉密度）+ 透明框扩高保持中心；见 rubric 评审二 |
 | 渲染图风格与原图"不像" | 配色/字号/线宽凭目测没程序化取值 | 回评审一：`extract_colors.py` + `compare_text.py` 重新测量 |
 
 ## 资源
