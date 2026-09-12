@@ -66,8 +66,9 @@ sci-flowchart-vba/
 - Content module must declare 9 geometry constants and a single
   `Public Sub DrawAll(sld As Slide)`.
 - Colors are `RGB(r,g,b)` literals; no `vbRed` etc.
-- `.bas` files are **pure ASCII + CRLF** — Chinese in strings or comments
-  corrupts the file when imported into the VBA editor.
+- `.bas` files are **UTF-8 encoded + CRLF** — node text and comments may be
+  Chinese (keep the source language; for a Chinese figure write Chinese directly).
+  UTF-8 is what lets Chinese survive into the `.pptx`.
 - Split into `modFlow_Content2.bas` when nodes > 18 or a module > 300 lines.
 - **Two review rounds are mandatory before delivery**: round 1 checks style
   fidelity to the source figure (palette saturation, font hierarchy, stroke
@@ -136,7 +137,7 @@ sci-flowchart-vba/
 
 - 内容模块必须声明 9 个几何常量，并定义唯一的 `Public Sub DrawAll(sld As Slide)`。
 - 颜色用 `RGB(r,g,b)` 字面量；不要 `vbRed` 之类。
-- `.bas` 文件必须**纯 ASCII + CRLF**——字符串或注释里出现中文，导入 VBA 编辑器后会乱码。
+- `.bas` 文件必须**UTF-8 编码 + CRLF 换行**——节点文字与注释可用中文（源图是中文时直接写中文），UTF-8 才能让中文正常落地。
 - 节点 > 18 或单模块 > 300 行时，拆到 `modFlow_Content2.bas`。
 - **交付前必须过两轮评审**：评审一对照源图查风格一致性（配色饱和度、字号层级、
   线框粗细）；评审二用 `review_render.py` 检查最终 `.pptx`（字体是否过大、
