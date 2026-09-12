@@ -37,12 +37,17 @@ FONT_FILES = {
     "georgia": "georgia.ttf",
     "segoe ui": "segoeui.ttf",
     "helvetica": "arial.ttf",
+    "microsoft yahei": "msyh.ttc",
+    "yahei": "msyh.ttc",
+    "msyh": "msyh.ttc",
+    "simsun": "simsun.ttc",
+    "simhei": "simhei.ttf",
 }
 _font_cache = {}
 _pil_ok = None
 
 
-def _load_font(font_name, pt):
+def _load_font(font_name, pt, bold=False):
     global _pil_ok
     if _pil_ok is False:
         return None
@@ -51,13 +56,19 @@ def _load_font(font_name, pt):
     except ImportError:
         _pil_ok = False
         return None
-    key = (font_name.lower(), int(pt * 4))
+    key = (font_name.lower(), int(pt * 4), bold)
     if key in _font_cache:
         return _font_cache[key]
     fn = FONT_FILES.get(font_name.lower())
     if not fn:
         _pil_ok = False
         return None
+    # bold CJK: prefer the bold face when available (msyh.ttc -> msyhbd.ttc)
+    if bold and fn == "msyh.ttc":
+        bpath = os.path.join(os.environ.get("WINDIR", r"C:\Windows"),
+                             "Fonts", "msyhbd.ttc")
+        if os.path.isfile(bpath):
+            fn = "msyhbd.ttc"
     path = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", fn)
     if not os.path.isfile(path):
         _pil_ok = False
@@ -71,15 +82,47 @@ def _load_font(font_name, pt):
     return f
 
 
-def text_width_in(text, font_name, pt):
-    """文本渲染宽度（英寸）。PIL 真实量宽优先，缺失时退化估算。"""
-    f = _load_font(font_name, pt)
+def _cjk_subst(font_name):
+    """If font_name is a Latin-only family but the text is CJK, return the
+    matching CJK face name so width measurement uses a real CJK font."""
+    f = (font_name or "").lower()
+    if any(k in f for k in ("yahei", "msyh", "arial", "helvetica", "segoe", "sans")):
+        return "microsoft yahei"
+    if any(k in f for k in ("simsun", "宋", "sun", "serif", "times")):
+        return "simsun"
+    if any(k in f for k in ("simhei", "黑", "hei")):
+        return "simhei"
+    return None
+
+
+def is_cjk(ch):
+    return ('\u3000' <= ch <= '\u303f' or '\u3400' <= ch <= '\u9fff'
+            or '\uff00' <= ch <= '\uffef')
+
+
+def text_width_in(text, font_name, pt, bold=False):
+    """文本渲染宽度（英寸）。PIL 真实量宽优先，缺失时退化估算（CJK 感知）。"""
+    f = _load_font(font_name, pt, bold)
+    if f is None and any(is_cjk(c) for c in text):
+        # Latin font won't measure CJK; substitute the matching CJK face
+        sub = _cjk_subst(font_name)
+        if sub:
+            f = _load_font(sub, pt, bold)
     if f is not None:
         try:
             return f.getlength(text) / 4.0 / 72.0
         except Exception:
             pass
-    return len(text) * pt * FALLBACK_K / 72.0
+    # 无字体文件时的估算：CJK 字形约 1.0em，西文约 0.55em，空格约 0.3em
+    w = 0.0
+    for ch in text:
+        if ch == ' ':
+            w += 0.3 * pt
+        elif is_cjk(ch):
+            w += 1.0 * pt
+        else:
+            w += FALLBACK_K * pt
+    return w / 72.0
 
 
 def emu2in(v):
@@ -221,9 +264,20 @@ def review(pptx_path):
             infos.append("文字宽/框宽中位数 %.2f（0.35~1.0 为合理区间）" % med)
 
     # ---- 2) 悬空连线 -------------------------------------------------------
+    # 折线拐点：某端点若与另一条连线的端点重合（距离 < SNAP），说明它是
+    # 多段折线的中间拐点而非自由端，不判悬空。真悬空 = 既不接节点也不接线。
+    SNAP = 0.03
+    endpoints = [p for seg in conns for p in seg]
+
+    def at_joint(p):
+        return any(q is not p and p is not q and
+                   abs(p[0] - q[0]) < SNAP and abs(p[1] - q[1]) < SNAP
+                   for q in endpoints)
+
     for i, (p0, p1) in enumerate(conns):
         for tag, p in (("起点", p0), ("终点", p1)):
-            if not any(inside(p[0], p[1], m["b"]) for m in nodes):
+            if not any(inside(p[0], p[1], m["b"]) for m in nodes) and \
+               not at_joint(p):
                 errs.append("连线#%d %s (%.2f,%.2f) 悬空：不在任何节点边界上"
                             % (i, tag, p[0], p[1]))
                 break
@@ -274,11 +328,14 @@ def main():
         return 2
     target = sys.argv[1]
     if os.path.isdir(target):
-        cand = [f for f in os.listdir(target) if f.endswith(".pptx")]
+        # 过滤 Office 锁文件（~$xxx.pptx 不是有效包，且 mtime 往往最新）
+        cand = [f for f in os.listdir(target)
+                if f.endswith(".pptx") and not f.startswith("~$")]
         if not cand:
             print("FAIL: 目录里没有 .pptx，请先跑 build_ppt.py")
             return 1
-        target = os.path.join(target, sorted(cand)[0])
+        # 多个 pptx 时取修改时间最新的（上轮产物可能被锁定无法覆盖）
+        target = os.path.join(target, max(cand, key=lambda f: os.path.getmtime(os.path.join(target, f))))
     if not os.path.isfile(target):
         print("FAIL: 找不到 %s" % target)
         return 1
