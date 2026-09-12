@@ -68,20 +68,24 @@
 1. **声明几何常量**（引擎引用，缺一则编译失败）：
    `CANVAS_W_PX, CANVAS_H_PX, PX_TO_IN, OFFSET_X_IN, OFFSET_Y_IN,
     SLIDE_W_IN, SLIDE_H_IN, CUSTOM_SIZE, FONT_NAME`。
+   `FONT_NAME` 取与源图字形一致的字体族：西文衬线 `Times New Roman` /
+   西文无衬线 `Arial`；中文黑体/无衬线 `Microsoft YaHei`、中文宋体/衬线
+   `SimSun`、粗黑 `SimHei`。预览与评审脚本按它自动选 CJK 字体文件；
+   个别节点需要不同字体时用 `AddNode` 的 `fontName` 可选参数覆盖。
 2. **声明调色板** `Public Const`：`INK / BG / ACCENT / ACCENT2 / ALT / LINE` 等。
 3. **定义唯一入口**：`Public Sub DrawAll(sld As Slide)`，内部调用各 `DrawContentN`。
 4. 复杂图（节点 > 18 或单模块 > 300 行）把 `DrawContentN` 拆到 `modFlow_Content2.bas` 等，
    `DrawAll` 仍要依次调用它们（跨模块 Public Sub 全局可见）。
-5. **整个文件纯 ASCII + CRLF**：`.bas` 是单字节文件，中文放进去会乱码。
-   中文节点用英文名 / 缩写 / 拼音；注释也写英文（中文注释会把文件变成 UTF-8）。
-   需要两行文字写 `"A" & vbLf & "B"`，比自动折行更可控。
+5. **整个文件 UTF-8 编码 + CRLF 换行**：节点文字、注释都可以直接用中文，
+   源图是中文流程图时**直接保留原中文**（不要翻译成英文/拼音）。UTF-8 才能让中文
+   正常落地；行尾必须是 CRLF。需要两行文字写 `"A" & vbLf & "B"`，比自动折行更可控。
 6. 坐标、颜色、形状、文字**全部来自对源图的识别**，禁止凭空猜测。
 7. **装饰调用统一放在 `Decorate` 私有 Sub 里**（`DrawAll` 末尾调用）：所有
    `SetPara` / `SetPartColor` 必须写在全部 AddNode 之后执行的位置——回放器
    与 lint 都是两遍解析（先收集节点，再应用装饰），写错顺序会匹配不到节点。
    覆盖式标题（文字叠在列表框上方）的避让写法：列表正文前导空行
    `"" & vbLf & "-Item..."`，标题用无边框无填充 rect 叠加，两条渲染路径都成立。
-8. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/非 ASCII/点串格式）。
+8. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/编码与换行/点串格式）。
 9. 交付前用 `scripts/build_ppt.py <输出目录>` 生成 `.pptx`；交付以 `.pptx` 为主、
    `.bas` 为辅（`.bas` 是"可重建的源码"，`.pptx` 是用户实际要用的文件）。
 
