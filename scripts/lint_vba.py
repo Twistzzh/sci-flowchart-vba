@@ -45,17 +45,24 @@ def split_args(s):
 def main(d):
     errs, warns, info = [], [], []
     eng = io.open(os.path.join(d, "modFlow_Engine.bas"), "rb").read()
-    txt = eng.decode("latin-1")
+    txt = eng.decode("utf-8", "replace")  # 引擎固定为 ASCII，utf-8 足够
     mods = {}
     for fn in sorted(os.listdir(d)):
         if not fn.endswith(".bas"):
             continue
         raw = open(os.path.join(d, fn), "rb").read()
-        try:
-            raw.decode("ascii")
-        except UnicodeDecodeError as e:
-            errs.append("%s: 含非 ASCII 字节 (%s)" % (fn, e))
-        t = raw.decode("latin-1")
+        t = None
+        for enc in ("utf-8-sig", "gbk"):
+            try:
+                t = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                pass
+        if t is None:
+            t = raw.decode("latin-1")
+            errs.append("%s: 非 UTF-8 也非 GBK, 导入 VBE 可能乱码" % fn)
+        elif enc == "gbk":
+            warns.append("%s: GBK 编码中文 (中文版 Windows VBE 可正常导入)" % fn)
         if not t.startswith("Attribute VB_Name = "):
             errs.append("%s: 首行不是 Attribute VB_Name" % fn)
         if b"\r\n" not in raw:
@@ -133,11 +140,7 @@ def main(d):
             if len(line) > 900:
                 warns.append("%s:%d 行过长 (%d 字符)" % (fn, ln, len(line)))
 
-    # 中文检测（只在字符串字面量里）
-    for fn, t in mods.items():
-        for m in re.finditer(r'"([^"]*)"', t):
-            if any(ord(c) > 127 for c in m.group(1)):
-                errs.append("%s: 字符串含非 ASCII: %r" % (fn, m.group(1)))
+    # 文字编码：允许中文（UTF-8 / GBK 均可，见上方解码逻辑），不再因"含中文"报错。
 
     info.append("模块: %s" % ", ".join(sorted(mods)))
     info.append("Sub: %d 个, AddNode %d 条, AddPath %d 条" % (len(subs), n_nodes, n_paths))
