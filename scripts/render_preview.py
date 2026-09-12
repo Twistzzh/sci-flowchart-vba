@@ -17,6 +17,17 @@ VBA = sorted(f for f in os.listdir(OUT) if f.lower().endswith(".bas")
              and "content" in f.lower())
 
 
+def _read_bas(path):
+    """Read a .bas file trying UTF-8 then GBK (zh-CN VBE), then latin-1."""
+    raw = open(path, "rb").read()
+    for enc in ("utf-8-sig", "gbk"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("latin-1")
+
+
 def split_args(s):
     out, cur, depth, q = [], [], 0, False
     for ch in s:
@@ -46,8 +57,14 @@ def untext(t):
 pal = {}
 nodes, paths = [], []
 canvas = [1280, 1120]
+FONT_NAME = "Arial"
+PREFER_YAHEI = False
 for fn in VBA:
-    raw = open(os.path.join(OUT, fn), "rb").read().decode("latin-1")
+    raw = _read_bas(os.path.join(OUT, fn))
+    if "FONT_NAME" in raw and ("YaHei" in raw or "SimSun" in raw or "SimHei" in raw):
+        PREFER_YAHEI = True
+    for m in re.finditer(r'Public Const FONT_NAME As String\s*=\s*"([^"]*)"', raw):
+        FONT_NAME = m.group(1)
     for m in re.finditer(r"Public Const (\w+)\s+As Long\s*=\s*RGB\((\d+),\s*(\d+),\s*(\d+)\)", raw):
         pal[m.group(1)] = (int(m.group(2)), int(m.group(3)), int(m.group(4)))
     for m in re.finditer(r"Public Const CANVAS_W_PX As Single = ([\d.]+)", raw):
@@ -72,19 +89,20 @@ for fn in VBA:
             ital = len(rest) > 3 and rest[3].lower() == "true"
             fc = rest[4] if len(rest) > 4 and rest[4] else "-1"
             corner = float(rest[5]) if len(rest) > 5 and rest[5] else -1
+            fname = rest[6].strip('"') if len(rest) > 6 and rest[6] else ""
             adj2 = float(rest[7]) if len(rest) > 7 and rest[7] else -1
             nodes.append(dict(id=ident, kind=kind.lower(), x=x, y=y, w=w, h=h,
                               fill=fill, line=linec, lw=lw, dash=dash, text=text,
                               pt=pt, bold=bold, ital=ital, fc=fc, corner=corner,
-                              adj2=adj2, order=len(nodes)))
+                              fname=fname, adj2=adj2, order=len(nodes)))
         elif line.startswith("AddPath "):
             args = split_args(line[8:])
             ident = args[1].strip('"')
             pts = [tuple(float(v) for v in p.split(",")) for p in args[2].strip('"').split(";")]
             color, lw, dash = args[3], float(args[4]), args[5]
             arrow = args[6].lower() == "true"
-            paths.append(dict(id=ident, pts=pts, color=color, lw=lw, arrow=arrow,
-                              order=len(paths)))
+            paths.append(dict(id=ident, pts=pts, color=color, lw=lw, dash=dash,
+                              arrow=arrow, order=len(paths)))
 CW, CH = int(canvas[0]), int(canvas[1])
 img = Image.new("RGB", (CW, CH), (255, 255, 255))
 d = ImageDraw.Draw(img)
@@ -111,17 +129,64 @@ FONT_CANDIDATES = [
 FONTS = {}
 
 
-def getfont(pt, bold, ital):
-    key = (round(pt, 1), bold, ital)
+CJK_FONT_FILES = [
+    r"C:\Windows\Fonts\msyh.ttc",
+    r"C:\Windows\Fonts\simsun.ttc",
+    r"C:\Windows\Fonts\simhei.ttf",
+    r"C:\Windows\Fonts\simsun.ttf",
+]
+
+
+def has_cjk(s):
+    """Return True if *s* contains CJK ideographs / full-width punctuation."""
+    return any('\u3000' <= c <= '\u303f' or '\u3400' <= c <= '\u9fff'
+               or '\uff00' <= c <= '\uffef' for c in s)
+
+
+def cjk_font_for(family, bold):
+    """Map the content module's FONT_NAME to a matching CJK font file.
+
+    - sans-serif / YaHei / Arial        -> Microsoft YaHei (bold -> msyhbd.ttc)
+    - serif / Times / SimSun / 宋体     -> SimSun
+    - SimHei / 黑体                     -> SimHei
+    This keeps the preview's Chinese typeface consistent with the source figure
+    instead of always defaulting to YaHei.
+    """
+    f = (family or "").lower()
+    if "simhei" in f or "黑" in f or "hei" in f:
+        return r"C:\Windows\Fonts\simhei.ttf"
+    if "simsun" in f or "宋" in f or "sun" in f or "serif" in f or "times" in f:
+        return r"C:\Windows\Fonts\simsun.ttc"
+    if bold:
+        return r"C:\Windows\Fonts\msyhbd.ttc"
+    return r"C:\Windows\Fonts\msyh.ttc"
+
+
+def getfont(pt, bold, ital, cjk=False, family=""):
+    key = (round(pt, 1), bold, ital, cjk, family.lower())
     if key not in FONTS:
-        f = (r"C:\Windows\Fonts\timesbi.ttf" if bold and ital else
-             r"C:\Windows\Fonts\timesbd.ttf" if bold else
-             r"C:\Windows\Fonts\timesi.ttf" if ital else
-             r"C:\Windows\Fonts\times.ttf")
-        try:
-            FONTS[key] = ImageFont.truetype(f, max(6, int(round(pt * px_per_pt))))
-        except OSError:
-            FONTS[key] = ImageFont.load_default()
+        if cjk:
+            cands = [cjk_font_for(family, bold)] + list(CJK_FONT_FILES)
+        elif PREFER_YAHEI:
+            cands = []
+            if bold:
+                cands.append(r"C:\Windows\Fonts\msyhbd.ttc")
+            cands.append(r"C:\Windows\Fonts\msyh.ttc")
+            cands.append(r"C:\Windows\Fonts\simsun.ttc")
+        else:
+            f = (r"C:\Windows\Fonts\timesbi.ttf" if bold and ital else
+                 r"C:\Windows\Fonts\timesbd.ttf" if bold else
+                 r"C:\Windows\Fonts\timesi.ttf" if ital else
+                 r"C:\Windows\Fonts\times.ttf")
+            cands = [f]
+        got = None
+        for f in cands:
+            try:
+                got = ImageFont.truetype(f, max(6, int(round(pt * px_per_pt))))
+                break
+            except OSError:
+                continue
+        FONTS[key] = got if got is not None else ImageFont.load_default()
     return FONTS[key]
 
 
@@ -246,7 +311,7 @@ def node_shape(n):
 
 # second pass: decoration calls (SetPara / SetPartColor) after ALL nodes exist
 for fn in VBA:
-    raw = open(os.path.join(OUT, fn), "rb").read().decode("latin-1")
+    raw = _read_bas(os.path.join(OUT, fn))
     logical = re.sub(r"_\s*\r?\n\s*", " ", raw)
     for line in logical.splitlines():
         line = line.strip()
@@ -268,16 +333,21 @@ for fn in VBA:
 for n in nodes:
     node_shape(n)
     if n["text"]:
-        f = getfont(n["pt"], n["bold"], n["ital"])
+        cjk = has_cjk(n["text"])
+        fam = n.get("fname") or FONT_NAME  # per-node fontName overrides FONT_NAME
+        f = getfont(n["pt"], n["bold"], n["ital"], cjk, fam)
         tc = col(n["fc"]) or (31, 31, 31)
         left = n.get("align") == "left"
         ml = n.get("ml", 0) or 0
+        # CJK 文本没有空格 -> 按字符折行；西文按单词折行。
         lines = []
         for para in n["text"].split("\n"):
+            units = list(para) if cjk else para.split()
+            sep = "" if cjk else " "
+            lim = n["w"] - 6 - (ml if left else 0)
             cur = ""
-            for wd in para.split():
-                t = (cur + " " + wd).strip()
-                lim = n["w"] - 6 - (ml if left else 0)
+            for wd in units:
+                t = (cur + sep + wd).strip() if sep else (cur + wd)
                 if d.textlength(t, font=f) <= lim or not cur:
                     cur = t
                 else:
@@ -290,7 +360,7 @@ for n in nodes:
         prefix = n.get("prefix")
         px_chars = prefix[0] if prefix else 0
         pcol = col(prefix[1]) if prefix else tc
-        fb = getfont(n["pt"], True, n["ital"])
+        fb = getfont(n["pt"], True, n["ital"], cjk, fam)
         for li, ln in enumerate(lines):
             if left:
                 x0 = n["x"] + 3 + ml
@@ -310,9 +380,18 @@ for n in nodes:
 for p in paths:
     c = col(p["color"]) or (0, 0, 0)
     wdt = max(1, int(round(p["lw"])))
+    is_dash = (p.get("dash") or "LINE_SOLID") != "LINE_SOLID"
     for i in range(len(p["pts"]) - 1):
         a, b = p["pts"][i], p["pts"][i + 1]
-        d.line([a, b], fill=c, width=wdt)
+        if is_dash:
+            if p["dash"] == "LINE_DOT":
+                dashed(a, b, c, wdt, dash=2, gap=4)
+            elif p["dash"] == "LINE_DASHDOT":
+                dashed(a, b, c, wdt, dash=8, gap=5)
+            else:
+                dashed(a, b, c, wdt, dash=9, gap=6)
+        else:
+            d.line([a, b], fill=c, width=wdt)
     if p["arrow"]:
         a, b = p["pts"][-2], p["pts"][-1]
         ang = math.atan2(b[1] - a[1], b[0] - a[0])
