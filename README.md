@@ -44,9 +44,14 @@ sci-flowchart-vba/
   references/
     example_content.bas # runnable content-module example
     vba-module-map.md   # engine API table + content-module contract
+    review_rubric.md    # two-round review standards (style + rendered geometry)
+    review_examples/    # origin.jpg (good) / failed.png (bad) sample pair
   scripts/
     build_ppt.py        # final step: .bas -> real .pptx (COM, replay fallback)
     lint_vba.py         # pre-delivery structural self-check
+    review_render.py    # review round 2: overflow / dangling / overlap checks
+    render_preview.py   # replay .bas -> preview_compare.png
+    extract_colors.py / extract_geometry.py / compare_text.py
 ```
 
 ### Quick start (as a user)
@@ -64,6 +69,10 @@ sci-flowchart-vba/
 - `.bas` files are **pure ASCII + CRLF** — Chinese in strings or comments
   corrupts the file when imported into the VBA editor.
 - Split into `modFlow_Content2.bas` when nodes > 18 or a module > 300 lines.
+- **Two review rounds are mandatory before delivery**: round 1 checks style
+  fidelity to the source figure (palette saturation, font hierarchy, stroke
+  weights); round 2 checks the rendered `.pptx` (`review_render.py`) for
+  oversized text, dangling connectors, and misplaced arrows.
 
 ### License
 
@@ -106,9 +115,14 @@ sci-flowchart-vba/
   references/
     example_content.bas # 可运行的内容模块示例
     vba-module-map.md   # 引擎 API 全表 + 内容模块契约
+    review_rubric.md    # 两轮评审标准（风格一致性 + 渲染几何）
+    review_examples/    # 正/负样本对照（origin.jpg / failed.png）
   scripts/
     build_ppt.py        # 最后一步：.bas -> 真实 .pptx（COM 优先，回放兜底）
     lint_vba.py         # 交付前的结构自检
+    review_render.py    # 评审二：文字溢出 / 悬空连线 / 重叠检查
+    render_preview.py   # 回放 .bas 渲染 preview_compare.png
+    extract_colors.py / extract_geometry.py / compare_text.py
 ```
 
 ### 快速开始（作为使用者）
@@ -124,6 +138,9 @@ sci-flowchart-vba/
 - 颜色用 `RGB(r,g,b)` 字面量；不要 `vbRed` 之类。
 - `.bas` 文件必须**纯 ASCII + CRLF**——字符串或注释里出现中文，导入 VBA 编辑器后会乱码。
 - 节点 > 18 或单模块 > 300 行时，拆到 `modFlow_Content2.bas`。
+- **交付前必须过两轮评审**：评审一对照源图查风格一致性（配色饱和度、字号层级、
+  线框粗细）；评审二用 `review_render.py` 检查最终 `.pptx`（字体是否过大、
+  连线是否悬空、箭头位置是否正确）。
 
 ### 许可证
 
