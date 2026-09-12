@@ -105,7 +105,7 @@ def load_bas(out_dir: str):
     }
 
     for fn in files:
-        raw = open(os.path.join(out_dir, fn), "rb").read().decode("latin-1")
+        raw = _read_bas(os.path.join(out_dir, fn))
         for m in PALETTE_RE.finditer(raw):
             pal[m.group(1).lower()] = (int(m.group(2)), int(m.group(3)), int(m.group(4)))
         for m in SCALAR_RE.finditer(raw):
@@ -178,6 +178,7 @@ def parse_path(args: list[str]) -> dict:
         id=args[1].strip('"'), pts=pts,
         color=args[3] if len(args) > 3 else "-1",
         lw=num(args[4], 1.0) if len(args) > 4 else 1.0,
+        dash=args[5] if len(args) > 5 else "LINE_SOLID",
         arrow=len(args) > 6 and args[6].strip().lower() == "true",
     )
 
@@ -253,8 +254,18 @@ def is_powerpoint_available() -> bool:
         return False
 
 
+def _read_bas(path):
+    """Read a .bas file trying UTF-8 then GBK (zh-CN VBE), then latin-1."""
+    raw = open(path, "rb").read()
+    for enc in ("utf-8-sig", "gbk"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("latin-1")
+
 def bas_text(path: str) -> str:
-    return open(path, "rb").read().decode("latin-1")
+    return _read_bas(path)
 
 
 def module_name(text: str, fallback: str) -> str:
@@ -442,6 +453,13 @@ def build_with_replay(out_dir: str, out_path: str) -> int:
                 MSO_CONNECTOR.STRAIGHT, X(x0), Y(y0), X(x1), Y(y1))
             conn.line.color.rgb = RGBColor(*c)
             conn.line.width = Pt(max(0.5, p["lw"]))
+            dashv = (p.get("dash") or "LINE_SOLID").upper()
+            if dashv in ("LINE_DASH", "LINE_DASHDOT", "LINE_DOT"):
+                from pptx.enum.dml import MSO_LINE_DASH_STYLE
+                conn.line.dash_style = (
+                    MSO_LINE_DASH_STYLE.DASH if dashv == "LINE_DASH"
+                    else MSO_LINE_DASH_STYLE.ROUND_DOT if dashv == "LINE_DOT"
+                    else MSO_LINE_DASH_STYLE.DASH_DOT)
             if p["arrow"] and i == len(pts) - 2:
                 # python-pptx exposes no arrowhead API: set it via the XML
                 ln = conn.line._get_or_add_ln()
