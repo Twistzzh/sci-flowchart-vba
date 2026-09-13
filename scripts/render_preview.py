@@ -59,6 +59,7 @@ nodes, paths = [], []
 canvas = [1280, 1120]
 FONT_NAME = "Arial"
 PREFER_YAHEI = False
+formulas = []
 for fn in VBA:
     raw = _read_bas(os.path.join(OUT, fn))
     if "FONT_NAME" in raw and ("YaHei" in raw or "SimSun" in raw or "SimHei" in raw):
@@ -103,6 +104,17 @@ for fn in VBA:
             arrow = args[6].lower() == "true"
             paths.append(dict(id=ident, pts=pts, color=color, lw=lw, dash=dash,
                               arrow=arrow, order=len(paths)))
+        elif line.startswith("AddFormula "):
+            args = split_args(line[11:])
+            # sld, id, x, y, w, h, "tex", "fallback", pt, fontC
+            formulas.append(dict(id=args[1].strip('"'),
+                                 x=float(args[2]), y=float(args[3]),
+                                 w=float(args[4]), h=float(args[5]),
+                                 tex=args[6].strip('"'),
+                                 fb=args[7].strip('"'),
+                                 pt=float(args[8]) if len(args) > 8 and args[8] else 16,
+                                 fc=args[9] if len(args) > 9 else "-1",
+                                 order=len(formulas)))
 CW, CH = int(canvas[0]), int(canvas[1])
 img = Image.new("RGB", (CW, CH), (255, 255, 255))
 d = ImageDraw.Draw(img)
@@ -396,6 +408,71 @@ for p in paths:
         a, b = p["pts"][-2], p["pts"][-1]
         ang = math.atan2(b[1] - a[1], b[0] - a[0])
         head(b, ang, c, 13)
+
+# ---- LaTeX formulas: native OMML in the pptx; preview via mathtext traceback
+
+
+def _render_tex_png(tex: str, size_pt: float, col_rgb):
+    """Render a LaTeX string to a cropped RGBA PIL image sized for the canvas."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    fig = figure.Figure(figsize=(8, 2.5), dpi=72)
+    FigureCanvasAgg(fig)
+    fig.patch.set_alpha(0.0)
+    safe = mathtext_safe(tex)
+    col01 = tuple(c / 255.0 for c in (col_rgb or (31, 31, 31)))
+    t = fig.text(0.5, 0.5, "$%s$" % safe, fontsize=size_pt, color=col01,
+                 math_fontfamily="stix", ha="center", va="center")
+    fig.canvas.draw()
+    buf = bytearray(fig.canvas.buffer_rgba())
+    W_, H_ = fig.canvas.get_width_height()
+    arr = Image.frombytes("RGBA", (W_, H_), bytes(buf))
+    alpha = arr.split()[3]
+    bbox = alpha.getbbox()
+    if not bbox:
+        return None
+    img2 = arr.crop(bbox)
+    # rendered at dpi=72: 1pt == 1px; scale to canvas px-per-pt
+    k = px_per_pt
+    nw, nh = max(1, int(img2.width * k)), max(1, int(img2.height * k))
+    return img2.resize((nw, nh), Image.LANCZOS)
+
+
+def mathtext_safe(tex: str) -> str:
+    """Trim to a subset matplotlib mathtext can parse."""
+    s = tex.replace("\n", " ").strip()
+    s = s.replace("\\,", " ").replace("\\;", " ").replace("\\!", "")
+    s = re.sub(r"\s+", " ", s)
+    return s.replace(" - ", " - ")
+
+
+def _draw_formula_linear(f, d):
+    cjk = has_cjk(f["fb"])
+    fnt = getfont(max(6, f["pt"] * 0.6), False, True, cjk, FONT_NAME)
+    tc = col(f["fc"]) or (31, 31, 31)
+    d.text((f["x"] + f["w"] / 2, f["y"] + f["h"] / 2), f["fb"], font=fnt,
+           fill=tc, anchor="mm")
+
+
+def _render_tex_safe(f, tc):
+    return _render_tex_png(f["tex"], f["pt"], tc)
+
+
+for f in formulas:
+    tc = col(f["fc"]) or (31, 31, 31)
+    try:
+        rendered = _render_tex_safe(f, tc)
+        if rendered is None:
+            raise RuntimeError("empty")
+        px = int(f["x"] + f["w"] / 2 - rendered.width / 2)
+        py = int(f["y"] + f["h"] / 2 - rendered.height / 2)
+        img.paste(rendered, (px, py), rendered)
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        _draw_formula_linear(f, d)
 
 img.save(os.path.join(OUT, "preview_render.png"))
 
