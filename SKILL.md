@@ -61,6 +61,17 @@ build_vba.py` 三脚本管线生成 VBA。**这一步"先转 SVG"损失太大**�
 - `AddNode sld, id, kind, x, y, w, h, fillC, lineC, lineW, dash, [text], [fontPt], [bold], [italic], [fontC], [cornerRatio], [fontName], [adj2]`
   建一个节点。坐标 (x,y) 为左上角、单位 px（指你下面的布局画布，不是图片真实像素）。
   `cornerRatio` 对圆角矩形是圆角比例、对块箭头是箭头相对高度；`adj2` 只给块箭头用（箭头相对长度）。
+- `AddFormula sld, id, x, y, w, h, "<LaTeX>", "<linear fallback>", fontPt, fontC`
+  在 (x,y,w,h) 里放一个**原生 Office 公式**（LaTeX → OMML），居中、Cambria Math。
+  适合分式 / 根号 / 上下标 / 求和号这类"文本框摆不出来"的数学式；简单变量直接用
+  AddNode 的斜体 Times 即可，不必上 AddFormula。
+  - `<LaTeX>` 用 ASCII 转义写（`\times` `\sqrt[3]{...}` `\frac{a}{b}` 等），字符串里
+    出现单个反斜杠即可，**不要双写**；VBA 里反斜杠不是转义字符。
+  - `<linear fallback>` 是给"VBA 手动按 F5"备用的线性版（COM 先画它，build_ppt.py
+    随后把保存的 .pptx 后处理成真 OMML，两条路最终看到的都是公式对象）。
+  - 依赖：replay/后处理路径需要 `pip install latex2mathml mathml2omml`（venv 已装）。
+  - 预览渲染用 matplotlib mathtext 画公式，与 PowerPoint 的 Cambria Math 成像略有
+    字形差异，但版式（根号/分数结构）一致。
 - `AddPath sld, id, "x1,y1;x2,y2;x3,y3", lineC, lineW, dash, arrowEnd`
   画一条折线连线（点串用分号分隔、逗号分隔 xy，单位 px）；`arrowEnd=True` 时末端带箭头。
 - 颜色用 `RGB(r,g,b)`；填充/描边传 `-1` 表示无。`LINE_SOLID=1 / LINE_DASH=4 / LINE_DOT=2 / LINE_DASHDOT=5`。
@@ -295,6 +306,8 @@ python scripts/review_render.py <输出目录>   # 对 flowchart.pptx 自动体�
 - [ ] 无空实参（形如 `AddNode …, 0.62, , 0.5` 会编译失败，中间槽位要写 `""`）。
 - [ ] 连线端点贴到形状边界，无悬空箭头。
 - [ ] 节点 > 18 或单模块 > 300 行时已拆到 `modFlow_Content2.bas`。
+- [ ] 数学式（根号/分式/上下标）用 `AddFormula` 而非手工分层拼装；LaTeX 源写在
+      字符串里（单反斜杠），fallback 给线性文本；replay/COM 都产出原生 OMML。
 - [ ] **已跑 `scripts/build_ppt.py`，输出目录里有可打开的 `.pptx`，且幻灯片上确实有形状**
       （不是空板）。
 - [ ] **评审一已过**：调色板/字号/线宽与原图程序化对照一致，无褪色、
@@ -320,6 +333,8 @@ python scripts/review_render.py <输出目录>   # 对 flowchart.pptx 自动体�
 | 重建 `.pptx` 报 `PermissionError` | 上一轮 pptx 被预览面板/Office 占用，删除也失败 | `build_ppt.py <目录> --out <目录>\flowchart_v2.pptx` 换名输出；`review_render.py` 会自动选 mtime 最新的 pptx（`~$` 锁文件已过滤） |
 | 字母堆叠竖排标签报"文本总高超出节点" | 多行按 1.25 行距累计，细高框装不下 | 字号 8pt→6.5pt（等效视觉密度）+ 透明框扩高保持中心；见 rubric 评审二 |
 | 渲染图风格与原图"不像" | 配色/字号/线宽凭目测没程序化取值 | 回评审一：`extract_colors.py` + `compare_text.py` 重新测量 |
+| 公式在 PPT 里打不开/显示线性文本 | latex2mathml / mathml2omml 未安装，或 fallback 匹配失败 | `pip install latex2mathml mathml2omml`；确认 AddFormula 的 fallback 文本与最终形状文本一致；COM 路径注入失败时保留线性版可用 |
+| 公式溢出所在白框 | fontPt 过大（mathtext/PPT 宽度按 em 估算） | 缩 fontPt（公式占位宽 ≈ pt×1.83px/字符 × 字符数），或加宽 AddFormula 的 w |
 
 ## 资源
 
