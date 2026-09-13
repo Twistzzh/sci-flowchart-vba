@@ -44,6 +44,7 @@
 | `SetPara` | `Sub(sld, id, align$, marginPx!)` | 事后排版：`align` = `"left"/"center"/"right"`，`marginPx` 为文字左内边距（px）。**必须在全部 AddNode 之后调用**（可跨模块引用别处定义的节点） |
 | `SetPartColor` | `Sub(sld, id, nChars&, colorC&)` | 把节点文字前 `nChars` 个字符单独标色 + 加粗（如 `"Step 1:"` 标红）。同样必须在 AddNode 之后调用 |
 | `SetLabel` / `StyleShape` / `TagShape` / `HasTag` / `ClearPrevious` | 工具 | 文字/样式/标签/幂等 |
+| `AddFormula` | `Sub(sld, id, x, y, w, h, tex$, fallBack$, sizePt!, fontC&)` | 建一个原生 Office 公式（LaTeX→OMML）。COM 路径先画线性 fallback，`build_ppt.py` 随后把保存的 `.pptx` 后处理成真 OMML；replay 路径直接建占位框再注入 OMML。依赖 `latex2mathml + mathml2omml`（pip）。预览用 matplotlib mathtext 渲染 |
 | `BuildFlowchart` / `RemoveFlowchart` | 入口 | 运行/清空 |
 
 `cornerRatio` → `Adjustments(1)`：圆角矩形的圆角比例，或块箭头的箭头相对高度。
@@ -85,8 +86,11 @@
    与 lint 都是两遍解析（先收集节点，再应用装饰），写错顺序会匹配不到节点。
    覆盖式标题（文字叠在列表框上方）的避让写法：列表正文前导空行
    `"" & vbLf & "-Item..."`，标题用无边框无填充 rect 叠加，两条渲染路径都成立。
-8. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/编码与换行/点串格式）。
-9. 交付前用 `scripts/build_ppt.py <输出目录>` 生成 `.pptx`；交付以 `.pptx` 为主、
+8. **公式用 `AddFormula`**：根号 / 分式 / 上下标这类结构交给引擎的 `AddFormula`
+   （LaTeX 源 → 原生 OMML，双路径可编辑）；不要再用"放大 √ 字符 + 手画上划线 +
+   小字 1/3"的多层拼装——那是历史兜底，宽度、基线对齐都难控。
+9. 交付前用 `scripts/lint_vba.py <输出目录>` 过一遍（常量/入口/空实参/编码与换行/点串格式）。
+10. 交付前用 `scripts/build_ppt.py <输出目录>` 生成 `.pptx`；交付以 `.pptx` 为主、
    `.bas` 为辅（`.bas` 是"可重建的源码"，`.pptx` 是用户实际要用的文件）。
 
 ## 修改生成的 VBA
