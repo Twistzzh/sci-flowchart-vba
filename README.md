@@ -70,6 +70,8 @@ sci-flowchart-vba/
   Chinese (keep the source language; for a Chinese figure write Chinese directly).
   UTF-8 is what lets Chinese survive into the `.pptx`.
 - Split into `modFlow_Content2.bas` when nodes > 18 or a module > 300 lines.
+- Math (radicals, fractions, sub/superscripts) uses `AddFormula sld, id, x, y, w, h, "<LaTeX>", "<linear fallback>", fontsize, color`
+  producing a **native editable Office equation** (LaTeX->OMML, both paths); simple variables stay as italic Times labels.
 - **Two review rounds are mandatory before delivery**: round 1 checks style
   fidelity to the source figure (palette saturation, font hierarchy, stroke
   weights); round 2 checks the rendered `.pptx` (`review_render.py`) for
@@ -139,6 +141,8 @@ sci-flowchart-vba/
 - 颜色用 `RGB(r,g,b)` 字面量；不要 `vbRed` 之类。
 - `.bas` 文件必须**UTF-8 编码 + CRLF 换行**——节点文字与注释可用中文（源图是中文时直接写中文），UTF-8 才能让中文正常落地。
 - 节点 > 18 或单模块 > 300 行时，拆到 `modFlow_Content2.bas`。
+- 数学式（根号 / 分式 / 上下标）用 `AddFormula sld, id, x, y, w, h, "<LaTeX>", "<线性fallback>", fontsize, color` 
+  直出 **原生可编辑 Office 公式**（LaTeX→OMML，双路径可编辑）；简单变量用斜体 Times 即可。
 - **交付前必须过两轮评审**：评审一对照源图查风格一致性（配色饱和度、字号层级、
   线框粗细）；评审二用 `review_render.py` 检查最终 `.pptx`（字体是否过大、
   连线是否悬空、箭头位置是否正确）。
