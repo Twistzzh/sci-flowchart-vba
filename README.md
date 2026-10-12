@@ -25,6 +25,20 @@ PowerPoint's VBA editor and run `BuildFlowchart`, or just open the generated
 - **Mode 2 — replicate**: supply an existing flowchart image; the skill rebuilds
   its logical structure in SCI style.
 
+### Example — SCI figure straight to editable PPT (Mode 2)
+
+**Input** — a framework figure from Long et al., *HPHS: Hierarchical Planning
+based on Hybrid Frontier Sampling for Unknown Environments Exploration*
+(IROS 2024):
+
+<img src="references/examples/hphs-original.jpg" width="420" alt="original SCI framework figure">
+
+**Output** — the generated `.pptx`, opened here in WPS: every panel, box, arrow
+and label is a **native editable shape** (not a picture), and the text stays
+selectable:
+
+<img src="references/examples/hphs-ppt.png" width="660" alt="generated pptx opened in WPS">
+
 ### Why vision-direct
 
 The old pipeline rasterized the figure to SVG first, then parsed it through
@@ -46,6 +60,7 @@ sci-flowchart-vba/
     vba-module-map.md   # engine API table + content-module contract
     review_rubric.md    # two-round review standards (style + rendered geometry)
     review_examples/    # origin.jpg (good) / failed.png (bad) sample pair
+    examples/           # hphs-original.jpg -> hphs-ppt.png (figure -> editable pptx)
   scripts/
     build_ppt.py        # final step: .bas -> real .pptx (COM, replay fallback)
     lint_vba.py         # pre-delivery structural self-check
@@ -101,6 +116,18 @@ VBA 源码。
   视觉风格（配色、圆角、描边、字体），从论文取内容，规划架构后出一张新流程图。
 - **模式② 复刻**：提供一张已有的流程图图片；技能按 SCI 风格重建它的逻辑结构。
 
+### 示例——SCI 论文图直接变可编辑 PPT（模式②复刻）
+
+**输入**——Long 等 *HPHS：基于混合前沿采样的分层规划未知环境探索*（IROS 2024）
+论文中的算法框架图：
+
+<img src="references/examples/hphs-original.jpg" width="420" alt="原图：SCI 论文算法框架图">
+
+**输出**——生成的 `.pptx`（此处为在 WPS 中打开的效果）：每个面板、框、箭头、
+标签都是**原生可编辑形状**（不是图片），文字保持可选：
+
+<img src="references/examples/hphs-ppt.png" width="660" alt="生成的 PPT（WPS 中打开）">
+
 ### 为什么用 vision-direct
 
 旧方案先把图矢量化成 SVG，再经三个脚本解析。这一步「先转 SVG」会丢掉形状语义、
@@ -120,6 +147,7 @@ sci-flowchart-vba/
     vba-module-map.md   # 引擎 API 全表 + 内容模块契约
     review_rubric.md    # 两轮评审标准（风格一致性 + 渲染几何）
     review_examples/    # 正/负样本对照（origin.jpg / failed.png）
+    examples/           # hphs-original.jpg -> hphs-ppt.png（论文图 -> 可编辑 pptx）
   scripts/
     build_ppt.py        # 最后一步：.bas -> 真实 .pptx（COM 优先，回放兜底）
     lint_vba.py         # 交付前的结构自检
